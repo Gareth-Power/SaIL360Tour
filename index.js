@@ -20,6 +20,7 @@
   var bowser = window.bowser;
   var screenfull = window.screenfull;
   var data = window.APP_DATA;
+  var viewer = null;
 
   // Grab elements from DOM.
   var panoElement = document.querySelector('#pano');
@@ -29,6 +30,25 @@
   var sceneListToggleElement = document.querySelector('#sceneListToggle');
   var autorotateToggleElement = document.querySelector('#autorotateToggle');
   var fullscreenToggleElement = document.querySelector('#fullscreenToggle');
+  var mobileInitialFov = 100 * Math.PI / 180;
+
+  function setText(element, value) {
+    element.textContent = value == null ? '' : String(value);
+  }
+
+  function syncViewportHeight() {
+    var viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--app-height', viewportHeight + 'px');
+  }
+
+  function resizeViewer() {
+    syncViewportHeight();
+    if (viewer) {
+      viewer.updateSize();
+    }
+  }
+
+  syncViewportHeight();
 
   // Detect desktop or mobile mode.
   if (window.matchMedia) {
@@ -43,7 +63,11 @@
     };
     var mql = matchMedia("(max-width: 500px), (max-height: 500px)");
     setMode();
-    mql.addListener(setMode);
+    if (mql.addEventListener) {
+      mql.addEventListener('change', setMode);
+    } else {
+      mql.addListener(setMode);
+    }
   } else {
     document.body.classList.add('desktop');
   }
@@ -68,7 +92,7 @@
   };
 
   // Initialize viewer.
-  var viewer = new Marzipano.Viewer(panoElement, viewerOpts);
+  viewer = new Marzipano.Viewer(panoElement, viewerOpts);
 
   // Create scenes.
   var scenes = data.scenes.map(function(data) {
@@ -106,6 +130,15 @@
       view: view
     };
   });
+
+  document.body.classList.toggle('multiple-scenes', scenes.length > 1);
+  document.body.classList.toggle('single-scene', scenes.length <= 1);
+
+  window.addEventListener('resize', resizeViewer);
+  window.addEventListener('orientationchange', resizeViewer);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resizeViewer);
+  }
 
   // Set up autorotate, if enabled.
   var autorotate = Marzipano.autorotate({
@@ -182,9 +215,23 @@
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;');
   }
 
+  function getSceneViewParameters(sceneData) {
+    var parameters = {
+      yaw: sceneData.initialViewParameters.yaw,
+      pitch: sceneData.initialViewParameters.pitch,
+      fov: sceneData.initialViewParameters.fov
+    };
+
+    if (document.body.classList.contains('mobile')) {
+      parameters.fov = Math.min(Math.max(parameters.fov, mobileInitialFov), 120 * Math.PI / 180);
+    }
+
+    return parameters;
+  }
+
   function switchScene(scene) {
     stopAutorotate();
-    scene.view.setParameters(scene.data.initialViewParameters);
+    scene.view.setParameters(getSceneViewParameters(scene.data));
     scene.scene.switchTo();
     startAutorotate();
     updateSceneName(scene);
@@ -192,7 +239,7 @@
   }
 
   function updateSceneName(scene) {
-    sceneNameElement.innerHTML = sanitize(scene.data.name);
+    setText(sceneNameElement, scene.data.name);
   }
 
   function updateSceneList(scene) {
@@ -276,7 +323,7 @@
     var tooltip = document.createElement('div');
     tooltip.classList.add('hotspot-tooltip');
     tooltip.classList.add('link-hotspot-tooltip');
-    tooltip.innerHTML = findSceneDataById(hotspot.target).name;
+    setText(tooltip, findSceneDataById(hotspot.target).name);
 
     wrapper.appendChild(icon);
     wrapper.appendChild(tooltip);
@@ -308,7 +355,7 @@
     titleWrapper.classList.add('info-hotspot-title-wrapper');
     var title = document.createElement('div');
     title.classList.add('info-hotspot-title');
-    title.innerHTML = hotspot.title;
+    setText(title, hotspot.title);
     titleWrapper.appendChild(title);
 
     // Create close element.
@@ -327,7 +374,7 @@
     // Create text element.
     var text = document.createElement('div');
     text.classList.add('info-hotspot-text');
-    text.innerHTML = hotspot.text;
+    setText(text, hotspot.text);
 
     // Place header and text into wrapper element.
     wrapper.appendChild(header);
@@ -387,6 +434,6 @@
   }
 
   // Display the initial scene.
-  switchScene(scenes[0]);
+  switchScene(findSceneById('6-entrance') || scenes[0]);
 
 })();
